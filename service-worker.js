@@ -1,4 +1,4 @@
-const CACHE = "sir-app-shell-v2";
+const CACHE = "sir-app-shell-v3";
 const ASSETS = [
   "./",
   "./index.html",
@@ -6,18 +6,9 @@ const ASSETS = [
   "./manifest.json",
   "./icon-192.png",
   "./icon-512.png",
-  // Core Shinylive bootstrap files
   "./shinylive/shinylive.js",
   "./shinylive/shinylive.css",
-  "./shinylive/style-resets.css",
-  "./shinylive/load-shinylive-sw.js",
-  // WebR core files (critical for R execution)
-  "./shinylive/webr/webr.mjs",
-  "./shinylive/webr/R.bin.js",
-  "./shinylive/webr/libRlapack.so",
-  // Workers
-  "./shinylive/lzstring-worker.js",
-  // Note: Other files will be runtime-cached on first load
+  "./shinylive/style-resets.css"
 ];
 
 self.addEventListener("install", (event) => {
