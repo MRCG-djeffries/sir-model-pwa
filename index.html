@@ -5,30 +5,26 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Shiny App</title>
-  <!-- <script src="./shinylive/load-shinylive-sw.js" type="module"></script> -->
-  <link rel="manifest" href="manifest.json">
+  <script src="/sir-model-pwa/shinylive/load-shinylive-sw.js" type="module"></script>
+  <link rel="manifest" href="/sir-model-pwa/manifest.json">
   <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
-        // Detect if we're on GitHub Pages or local
-        const isGitHubPages = window.location.hostname.includes('github.io');
-        const swPath = isGitHubPages ? "/sir-model-pwa/service-worker.js" : "./service-worker.js";
-        const scope = isGitHubPages ? { scope: "/sir-model-pwa/" } : {};
-        navigator.serviceWorker.register(swPath, scope);
+        navigator.serviceWorker.register("/sir-model-pwa/service-worker.js", { scope: "/sir-model-pwa/" });
       });
     }
   </script>
   <script type="module">
-    import { runExportedApp } from "./shinylive/shinylive.js";
+    import { runExportedApp } from "/sir-model-pwa/shinylive/shinylive.js";
     runExportedApp({
       id: "root",
       appEngine: "r",
-      appJsonPath: "./app.json",
-      relPath: "",
+      appJsonPath: "/sir-model-pwa/app.json",
+      relPath: "/sir-model-pwa/",
     });
   </script>
-  <link rel="stylesheet" href="./shinylive/style-resets.css" />
-  <link rel="stylesheet" href="./shinylive/shinylive.css" />
+  <link rel="stylesheet" href="/sir-model-pwa/shinylive/style-resets.css" />
+  <link rel="stylesheet" href="/sir-model-pwa/shinylive/shinylive.css" />
 
 </head>
 
