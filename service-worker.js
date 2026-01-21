@@ -6,9 +6,18 @@ const ASSETS = [
   "./manifest.json",
   "./icon-192.png",
   "./icon-512.png",
+  // Core Shinylive bootstrap files
   "./shinylive/shinylive.js",
   "./shinylive/shinylive.css",
-  "./shinylive/style-resets.css"
+  "./shinylive/style-resets.css",
+  "./shinylive/load-shinylive-sw.js",
+  // WebR core files (critical for R execution)
+  "./shinylive/webr/webr.mjs",
+  "./shinylive/webr/R.bin.js",
+  "./shinylive/webr/libRlapack.so",
+  // Workers
+  "./shinylive/lzstring-worker.js"
+  // Note: Other files will be runtime-cached on first load
 ];
 
 self.addEventListener("install", (event) => {
@@ -23,16 +32,24 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
-  // Handle navigation (refresh / direct URL) offline
+  if (event.request.method !== "GET") return;
+
+  // Offline navigation → serve the app shell
   if (event.request.mode === "navigate") {
     event.respondWith(
-      caches.match("./index.html").then((res) => res || caches.match("./"))
+      caches.match("./index.html").then((res) => res || fetch(event.request))
     );
     return;
   }
 
-  // Cache-first for everything else
   event.respondWith(
-    caches.match(event.request).then((cached) => cached || fetch(event.request))
+    caches.match(event.request, { ignoreSearch: true }).then((cached) => {
+      return cached || fetch(event.request).then((resp) => {
+        // Runtime cache new GETs
+        const respClone = resp.clone();
+        caches.open(CACHE).then((cache) => cache.put(event.request, respClone));
+        return resp;
+      });
+    })
   );
 });
