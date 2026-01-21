@@ -16,7 +16,7 @@ const ASSETS = [
   "./shinylive/webr/R.bin.js",
   "./shinylive/webr/libRlapack.so",
   // Workers
-  "./shinylive/lzstring-worker.js"
+  "./shinylive/lzstring-worker.js",
   // Note: Other files will be runtime-cached on first load
 ];
 
