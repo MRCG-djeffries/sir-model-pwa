@@ -1,14 +1,11 @@
-const CACHE = "sir-app-shell-v3";
+const CACHE = "sir-app-shell-v4";
 const ASSETS = [
   "./",
   "./index.html",
   "./app.json",
   "./manifest.json",
   "./icon-192.png",
-  "./icon-512.png",
-  "./shinylive/shinylive.js",
-  "./shinylive/shinylive.css",
-  "./shinylive/style-resets.css"
+  "./icon-512.png"
 ];
 
 self.addEventListener("install", (event) => {
