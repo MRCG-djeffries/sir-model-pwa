@@ -3,17 +3,17 @@
 
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" /> 
   <title>Shiny App</title>
-  <script src="/sir-model-pwa/shinylive/load-shinylive-sw.js" type="module"></script>
+  <!--<script src="/sir-model-pwa/shinylive/load-shinylive-sw.js" type="module"></script>-->
   <link rel="manifest" href="/sir-model-pwa/manifest.json">
-  <!--<script>
+  <script>
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
         navigator.serviceWorker.register("/sir-model-pwa/service-worker.js", { scope: "/sir-model-pwa/" });
       });
     }
-  </script> -->
+  </script> 
   <script type="module">
     import { runExportedApp } from "/sir-model-pwa/shinylive/shinylive.js";
     runExportedApp({
