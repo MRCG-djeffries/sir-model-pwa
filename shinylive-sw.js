@@ -2216,11 +2216,31 @@ function addCoiHeaders(resp) {
     headers
   });
 }
+//self.addEventListener("install", (event) => {
+//  event.waitUntil(
+//    Promise.all([self.skipWaiting(), caches.open(version + cacheName)])
+//  );
+//});
+  // ✅ USE THIS BLOCK
 self.addEventListener("install", (event) => {
   event.waitUntil(
-    Promise.all([self.skipWaiting(), caches.open(version + cacheName)])
+    (async () => {
+      await self.skipWaiting();
+
+      const cache = await caches.open(version + cacheName);
+
+      const base_path = dirname(self.location.pathname);
+      await cache.addAll([
+        `${base_path}/index.html`,
+        `${base_path}/app.json`,
+        `${base_path}/manifest.json`,
+        `${base_path}/icon-192.png`,
+        `${base_path}/icon-512.png`,
+      ]);
+    })()
   );
 });
+
 self.addEventListener("activate", function(event) {
   event.waitUntil(
     (async () => {
@@ -2244,6 +2264,13 @@ self.addEventListener("fetch", function(event) {
   if (url.pathname == "/esbuild")
     return;
   const base_path = dirname(self.location.pathname);
+    // ✅ ADD THIS BLOCK
+  if (request.mode === "navigate") {
+    event.respondWith(
+      fetch(request).catch(() => caches.match(`${base_path}/index.html`))
+    );
+    return;
+  }
   if (url.pathname == `${base_path}/shinylive-inject-socket.js`) {
     event.respondWith(
       new Response(shinylive_inject_socket_default, {
