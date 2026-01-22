@@ -2272,6 +2272,30 @@ self.addEventListener("fetch", function(event) {
   if (url.pathname == "/esbuild")
     return;
   const base_path = dirname(self.location.pathname);
+  // DIAGNOSTIC BLOCK: prove the SW is (or isn't) intercepting cold-start navigations
+if (request.mode === "navigate") {
+  const p = url.pathname;
+  const isEntry =
+    p === `${base_path}/index.html` ||
+    p === `${base_path}/` ||
+    p === `${base_path}`;
+
+  if (isEntry) {
+    event.respondWith(
+      new Response(
+        `<!doctype html>
+         <html><body style="font-family: sans-serif; padding: 24px;">
+           <h1>✅ Service Worker intercepted navigation</h1>
+           <p>URL: ${url.pathname}</p>
+           <p>If you see this while Wi-Fi is OFF, cold-start navigation is going through the SW.</p>
+         </body></html>`,
+        { headers: { "Content-Type": "text/html; charset=utf-8" } }
+      )
+    );
+    return;
+  }
+}
+
 // ✅ Offline-cold-start fix BLOCK: cache-first for the ENTRY document only.
 // Do NOT intercept Shinylive's internal /app_<hash>/ navigations.
 if (request.mode === "navigate") {
