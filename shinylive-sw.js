@@ -2357,6 +2357,36 @@ if (request.mode === "navigate") {
   }
   // turn this off to avoid big cache download
 // ✅ Cache-first for WebR runtime + VFS (GET only)
+  // ✅ Offline-critical: WebR VFS must be cache-first and must not throw
+if (url.pathname.startsWith(`${base_path}/shinylive/webr/vfs/`)) {
+  event.respondWith((async () => {
+    // Cache API can't store HEAD; and VFS needs GET anyway
+    if (request.method !== "GET") {
+      // For HEAD, just try network (will fail offline but shouldn't crash caching)
+      return fetch(request);
+    }
+
+    const cache = await caches.open(version + cacheName);
+
+    // Try cache first (offline-safe)
+    const cached = await cache.match(request, { ignoreSearch: true });
+    if (cached) return cached;
+
+    // Not cached yet: fetch and store (online warm-up)
+    try {
+      const resp = await fetch(request);
+      if (resp && resp.ok && resp.type === "basic") {
+        await cache.put(request, resp.clone());
+      }
+      return resp;
+    } catch (e) {
+      // Offline and not cached -> return a clean 404 (prevents unhandled rejection)
+      return new Response("Offline: VFS file not cached", { status: 404 });
+    }
+  })());
+  return;
+}
+
 if (url.pathname.startsWith(`${base_path}/shinylive/webr/`)) {
   event.respondWith((async () => {
     // Never try to cache non-GET (HEAD will throw on cache.put)
