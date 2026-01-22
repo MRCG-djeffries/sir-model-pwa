@@ -1,7 +1,6 @@
-const SHELL_CACHE = "sir-shell-v1";
-const STATIC_CACHE = "sir-static-v1";
+const SHELL_CACHE = "sir-shell-v2";
+const STATIC_CACHE = "sir-static-v2";
 
-// App shell: must always be available offline
 const SHELL_ASSETS = [
   "/sir-model-pwa/",
   "/sir-model-pwa/index.html",
@@ -11,10 +10,8 @@ const SHELL_ASSETS = [
   "/sir-model-pwa/icon-512.png",
 ];
 
-// Treat these as “big + stable”: cache-first for speed/offline
 const STATIC_PREFIXES = [
   "/sir-model-pwa/shinylive/",
-  // if your WebR assets live under shinylive/webr, this covers them too
 ];
 
 self.addEventListener("install", (event) => {
@@ -35,25 +32,31 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(event.request.url);
 
-  // Only handle your GitHub Pages scope
+  // ✅ only same-origin
+  if (url.origin !== self.location.origin) return;
+
+  // ✅ only within your GH Pages scope
   if (!url.pathname.startsWith("/sir-model-pwa/")) return;
 
-  // Navigation: offline-first app shell
+  // ✅ Navigations: network-first, offline fallback to cached shell
   if (event.request.mode === "navigate") {
     event.respondWith(
-      caches.match("/sir-model-pwa/index.html").then((cached) => cached || fetch(event.request))
+      fetch(event.request).catch(() => caches.match("/sir-model-pwa/index.html"))
     );
     return;
   }
 
-  // Static runtime assets: cache-first (fast repeat loads)
+  // ✅ Cache-first for shinylive assets, but never cache failures
   if (isStaticAsset(url)) {
     event.respondWith(
       caches.match(event.request, { ignoreSearch: true }).then((cached) => {
         if (cached) return cached;
+
         return fetch(event.request).then((resp) => {
-          const copy = resp.clone();
-          caches.open(STATIC_CACHE).then((c) => c.put(event.request, copy));
+          if (resp && resp.ok) {
+            const copy = resp.clone();
+            caches.open(STATIC_CACHE).then((c) => c.put(event.request, copy));
+          }
           return resp;
         });
       })
@@ -61,10 +64,8 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Everything else: network-first with offline fallback
+  // Default: network-first with cache fallback
   event.respondWith(
-    fetch(event.request)
-      .then((resp) => resp)
-      .catch(() => caches.match(event.request, { ignoreSearch: true }))
+    fetch(event.request).catch(() => caches.match(event.request, { ignoreSearch: true }))
   );
 });
