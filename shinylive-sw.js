@@ -2236,7 +2236,7 @@ self.addEventListener("install", (event) => {
         `${base_path}/app.json`,
         `${base_path}/manifest.json`,
         `${base_path}/shinylive/webr/vfs/usr/lib/R/library/translations/DESCRIPTION`,
-        `${base_path}/manifest.json`,
+        //`${base_path}/manifest.json`,
         `${base_path}/icon-192.png`,
         `${base_path}/icon-512.png`,
       ]);
