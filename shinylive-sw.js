@@ -2202,7 +2202,7 @@ function asgiToRes(res, body) {
 }
 
 // src/shinylive-sw.ts
-var useCaching = false;
+var useCaching = true; // changed from false Jan 22
 var cacheName = "::shinyliveServiceworker";
 var version = "v9";
 function addCoiHeaders(resp) {
@@ -2216,11 +2216,34 @@ function addCoiHeaders(resp) {
     headers
   });
 }
+/*
 self.addEventListener("install", (event) => {
   event.waitUntil(
     Promise.all([self.skipWaiting(), caches.open(version + cacheName)])
   );
 });
+*/
+self.addEventListener("install", (event) => {
+  const base_path = dirname(self.location.pathname); // e.g. /sir-model-pwa
+  const APP_SHELL_URLS = [
+    `${base_path}/`,
+    `${base_path}/index.html`,
+    `${base_path}/app.json`,
+    `${base_path}/manifest.json`,
+    `${base_path}/icon-192.png`,
+    `${base_path}/icon-512.png`,
+  ];
+
+  event.waitUntil(
+    (async () => {
+      await self.skipWaiting();
+      const cache = await caches.open(version + cacheName);
+      // Precache the app shell so refresh works offline
+      await cache.addAll(APP_SHELL_URLS);
+    })()
+  );
+});
+
 self.addEventListener("activate", function(event) {
   event.waitUntil(
     (async () => {
@@ -2243,6 +2266,24 @@ self.addEventListener("fetch", function(event) {
     return;
   if (url.pathname == "/esbuild")
     return;
+  // ✅ Offline refresh support: serve cached index.html for navigations
+  if (request.mode === "navigate") {
+    event.respondWith(
+      (async () => {
+        try {
+          // Online-first for navigations (so updates still load)
+          return await fetch(request);
+        } catch (e) {
+          // Offline: fall back to cached app shell
+          const base_path = dirname(self.location.pathname);
+          const cached = await caches.match(`${base_path}/index.html`);
+          return cached || new Response("Offline and index.html not cached.", { status: 503 });
+        }
+      })()
+    );
+    return;
+  }
+
   const base_path = dirname(self.location.pathname);
   if (url.pathname == `${base_path}/shinylive-inject-socket.js`) {
     event.respondWith(
