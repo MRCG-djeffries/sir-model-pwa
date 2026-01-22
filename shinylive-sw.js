@@ -2272,6 +2272,7 @@ self.addEventListener("fetch", function(event) {
   if (url.pathname == "/esbuild")
     return;
   const base_path = dirname(self.location.pathname);
+  /*
   // DIAGNOSTIC BLOCK: prove the SW is (or isn't) intercepting cold-start navigations
 if (request.mode === "navigate") {
   const p = url.pathname;
@@ -2295,10 +2296,35 @@ if (request.mode === "navigate") {
     return;
   }
 }
+*/
+  
+// ✅ Offline-cold-start fix BLOCK: cache-first for the ENTRY document only.
+// Do NOT intercept Shinylive's internal /app_<hash>/ navigations.
+  if (request.mode === "navigate") {
+  const p = url.pathname;
+  const isEntry =
+    p === `${base_path}/index.html` ||
+    p === `${base_path}/` ||
+    p === `${base_path}`;
+
+  if (isEntry) {
+    event.respondWith((async () => {
+      const indexUrl = `${base_path}/index.html`;
+
+      // 1) Serve cached shell immediately if present (fast + offline)
+      const cached = await caches.match(indexUrl);
+      if (cached) return cached;
+
+      // 2) Otherwise go to network (first-ever visit)
+      return fetch(request);
+    })());
+    return;
+  }
+}
 
 // ✅ Offline-cold-start fix BLOCK: cache-first for the ENTRY document only.
 // Do NOT intercept Shinylive's internal /app_<hash>/ navigations.
-if (request.mode === "navigate") {
+/*if (request.mode === "navigate") {
   const p = url.pathname;
 
   const isEntry =
@@ -2319,7 +2345,7 @@ if (request.mode === "navigate") {
   }
   // For other navigations (including /app_<hash>/), fall through to Shinylive logic
 }
-
+*/
   if (url.pathname == `${base_path}/shinylive-inject-socket.js`) {
     event.respondWith(
       new Response(shinylive_inject_socket_default, {
