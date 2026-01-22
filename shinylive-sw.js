@@ -2272,25 +2272,30 @@ self.addEventListener("fetch", function(event) {
   if (url.pathname == "/esbuild")
     return;
   const base_path = dirname(self.location.pathname);
-    // ✅ ADD THIS BLOCK
-// Only handle the real app entry navigations.
-// DO NOT intercept Shinylive's internal app_<hash>/ navigations.
+// ✅ Offline-cold-start fix BLOCK: cache-first for the ENTRY document only.
+// Do NOT intercept Shinylive's internal /app_<hash>/ navigations.
 if (request.mode === "navigate") {
   const p = url.pathname;
 
   const isEntry =
     p === `${base_path}/index.html` ||
     p === `${base_path}/` ||
-    p === `${base_path}`; // just in case
+    p === `${base_path}`;
 
   if (isEntry) {
     event.respondWith(
-      fetch(request).catch(() => caches.match(`${base_path}/index.html`))
+      (async () => {
+        const indexUrl = `${base_path}/index.html`;
+        const cached = await caches.match(indexUrl);
+        if (cached) return cached;              // ✅ instant offline start
+        return fetch(request);                  // otherwise go to network
+      })()
     );
     return;
   }
-  // Otherwise: let Shinylive handle it (including /app_<hash>/)
+  // For other navigations (including /app_<hash>/), fall through to Shinylive logic
 }
+
   if (url.pathname == `${base_path}/shinylive-inject-socket.js`) {
     event.respondWith(
       new Response(shinylive_inject_socket_default, {
