@@ -2237,6 +2237,13 @@ self.addEventListener("install", (event) => {
         `${base_path}/icon-192.png`,
         `${base_path}/icon-512.png`,
       ]);
+      const CORE_WEBR = [
+  `${base_path}/shinylive/webr/webr.mjs`,
+  `${base_path}/shinylive/webr/R.bin.js`,
+  `${base_path}/shinylive/webr/R.bin.wasm`,
+];
+await cache.addAll(CORE_WEBR);
+
     })()
   );
 });
@@ -2292,6 +2299,21 @@ if (request.mode === "navigate") {
     );
     return;
   }
+  // ✅ Cache-first for WebR runtime + VFS so offline works BLOCK
+  // turn this off to avoid big cache download
+if (url.pathname.startsWith(`${base_path}/shinylive/webr/`)) {
+  event.respondWith((async () => {
+    const cache = await caches.open(version + cacheName);
+    const cached = await cache.match(request, { ignoreSearch: true });
+    if (cached) return cached;
+
+    const resp = await fetch(request);
+    if (resp && resp.ok) await cache.put(request, resp.clone());
+    return resp;
+  })());
+  return;
+}
+
   const coiRequested = url.searchParams.get("coi") === "1" || request.referrer.includes("coi=1");
   const appPathRegex = /.*\/(app_[^/]+\/)/;
   const m_appPath = appPathRegex.exec(url.pathname);
