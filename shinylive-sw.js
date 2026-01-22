@@ -2265,12 +2265,24 @@ self.addEventListener("fetch", function(event) {
     return;
   const base_path = dirname(self.location.pathname);
     // ✅ ADD THIS BLOCK
-  if (request.mode === "navigate") {
+// Only handle the real app entry navigations.
+// DO NOT intercept Shinylive's internal app_<hash>/ navigations.
+if (request.mode === "navigate") {
+  const p = url.pathname;
+
+  const isEntry =
+    p === `${base_path}/index.html` ||
+    p === `${base_path}/` ||
+    p === `${base_path}`; // just in case
+
+  if (isEntry) {
     event.respondWith(
       fetch(request).catch(() => caches.match(`${base_path}/index.html`))
     );
     return;
   }
+  // Otherwise: let Shinylive handle it (including /app_<hash>/)
+}
   if (url.pathname == `${base_path}/shinylive-inject-socket.js`) {
     event.respondWith(
       new Response(shinylive_inject_socket_default, {
