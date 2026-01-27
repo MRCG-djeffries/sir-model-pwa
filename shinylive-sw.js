@@ -2223,33 +2223,72 @@ function addCoiHeaders(resp) {
 //  );
 //});
   // ✅ USE THIS BLOCK
+
 self.addEventListener("install", (event) => {
-  event.waitUntil(
-    (async () => {
-      await self.skipWaiting();
+  event.waitUntil((async () => {
+    await self.skipWaiting();
 
-      const cache = await caches.open(version + cacheName);
+    const cache = await caches.open(version + cacheName);
+    const base_path = dirname(self.location.pathname);
 
-      const base_path = dirname(self.location.pathname);
-      await cache.addAll([
-        `${base_path}/index.html`,
-        `${base_path}/app.json`,
-        `${base_path}/manifest.json`,
-        `${base_path}/shinylive/webr/vfs/usr/lib/R/library/translations/DESCRIPTION`,
-        //`${base_path}/manifest.json`,
-        `${base_path}/icon-192.png`,
-        `${base_path}/icon-512.png`,
-      ]);
-      const CORE_WEBR = [
-  `${base_path}/shinylive/webr/webr.mjs`,
-  `${base_path}/shinylive/webr/R.bin.js`,
-  //`${base_path}/shinylive/webr/R.bin.wasm`,
-];
-await cache.addAll(CORE_WEBR);
+    // Build one combined list
+    const urls = [
+      `${base_path}/index.html`,
+      `${base_path}/app.json`,
+      `${base_path}/manifest.json`,
+      `${base_path}/icon-192.png`,
+      `${base_path}/icon-512.png`,
+      `${base_path}/shinylive/webr/webr.mjs`,
+      `${base_path}/shinylive/webr/R.bin.js`,
+      `${base_path}/shinylive/webr/vfs/usr/lib/R/library/translations/DESCRIPTION`,
+    ];
 
-    })()
-  );
+    // ✅ Dedupe (prevents "duplicate requests" InvalidStateError)
+    const uniqueUrls = [...new Set(urls)];
+
+    // ✅ Best-effort precache: don't let one failure abort install
+    await Promise.all(uniqueUrls.map(async (u) => {
+      try {
+        const resp = await fetch(u, { cache: "no-store" });
+        if (resp.ok) {
+          await cache.put(u, resp);
+        } else {
+          // Optional: console.warn("Precache non-200:", u, resp.status);
+        }
+      } catch (e) {
+        // Optional: console.warn("Precache failed:", u);
+      }
+    }));
+  })());
 });
+
+//self.addEventListener("install", (event) => {
+//  event.waitUntil(
+//    (async () => {
+//      await self.skipWaiting();
+
+//      const cache = await caches.open(version + cacheName);
+
+//      const base_path = dirname(self.location.pathname);
+//      await cache.addAll([
+//        `${base_path}/index.html`,
+//        `${base_path}/app.json`,
+//        `${base_path}/manifest.json`,
+//        `${base_path}/shinylive/webr/vfs/usr/lib/R/library/translations/DESCRIPTION`,
+        //`${base_path}/manifest.json`,
+//        `${base_path}/icon-192.png`,
+//        `${base_path}/icon-512.png`,
+//      ]);
+//      const CORE_WEBR = [
+//  `${base_path}/shinylive/webr/webr.mjs`,
+//  `${base_path}/shinylive/webr/R.bin.js`,
+  //`${base_path}/shinylive/webr/R.bin.wasm`,
+//];
+//await cache.addAll(CORE_WEBR);
+
+//    })()
+//  );
+//});
 self.addEventListener("activate", function(event) {
   event.waitUntil((async () => {
     await self.clients.claim();
