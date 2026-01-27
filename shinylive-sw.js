@@ -2250,22 +2250,37 @@ await cache.addAll(CORE_WEBR);
     })()
   );
 });
-
 self.addEventListener("activate", function(event) {
-  event.waitUntil(
-    (async () => {
-      await self.clients.claim();
-      const keys = await caches.keys();
-      return Promise.all(
-        keys.filter(function(key) {
-          return key.indexOf(version + cacheName) !== 0;
-        }).map(function(key) {
-          return caches.delete(key);
-        })
-      );
-    })()
-  );
+  event.waitUntil((async () => {
+    await self.clients.claim();
+
+    const current = version + cacheName;
+    const keys = await caches.keys();
+
+    await Promise.all(
+      keys
+        // delete only shinylive SW caches
+        .filter((k) => k.endsWith(cacheName) && k !== current)
+        .map((k) => caches.delete(k))
+    );
+  })());
 });
+
+//self.addEventListener("activate", function(event) {
+//  event.waitUntil(
+//    (async () => {
+//      await self.clients.claim();
+//      const keys = await caches.keys();
+//      return Promise.all(
+//        keys.filter(function(key) {
+//          return key.indexOf(version + cacheName) !== 0;
+//        }).map(function(key) {
+//          return caches.delete(key);
+//        })
+//      );
+//    })()
+//  );
+//});
 self.addEventListener("fetch", function(event) {
   const request = event.request;
   const url = new URL(request.url);
