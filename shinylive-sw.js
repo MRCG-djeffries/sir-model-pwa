@@ -2231,34 +2231,25 @@ self.addEventListener("install", (event) => {
     const cache = await caches.open(version + cacheName);
     const base_path = dirname(self.location.pathname);
 
-    // Build one combined list
     const urls = [
       `${base_path}/index.html`,
       `${base_path}/app.json`,
       `${base_path}/manifest.json`,
+      `${base_path}/shinylive/webr/vfs/usr/lib/R/library/translations/DESCRIPTION`,
       `${base_path}/icon-192.png`,
       `${base_path}/icon-512.png`,
+
+      // CORE_WEBR
       `${base_path}/shinylive/webr/webr.mjs`,
       `${base_path}/shinylive/webr/R.bin.js`,
-      `${base_path}/shinylive/webr/vfs/usr/lib/R/library/translations/DESCRIPTION`,
+      // `${base_path}/shinylive/webr/R.bin.wasm`, // only if it truly exists
     ];
 
-    // ✅ Dedupe (prevents "duplicate requests" InvalidStateError)
+    // ✅ Deduplicate once
     const uniqueUrls = [...new Set(urls)];
 
-    // ✅ Best-effort precache: don't let one failure abort install
-    await Promise.all(uniqueUrls.map(async (u) => {
-      try {
-        const resp = await fetch(u, { cache: "no-store" });
-        if (resp.ok) {
-          await cache.put(u, resp);
-        } else {
-          // Optional: console.warn("Precache non-200:", u, resp.status);
-        }
-      } catch (e) {
-        // Optional: console.warn("Precache failed:", u);
-      }
-    }));
+    // ✅ Keep Shinylive's original precache behavior
+    await cache.addAll(uniqueUrls);
   })());
 });
 
