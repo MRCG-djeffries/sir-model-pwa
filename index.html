@@ -62,57 +62,99 @@
 <script>
 (function () {
   const el = document.getElementById("pwa-status");
-  let currentVersion = ""; // start blank (not "unknown")
+  const KEY = "sirModel_swVersion";
+  let currentVersion = localStorage.getItem(KEY) || ""; // show last known immediately
 
-  function render() {
+  function render(note) {
     const online = navigator.onLine ? "online" : "OFFLINE";
     const controlled = (navigator.serviceWorker && navigator.serviceWorker.controller) ? "SW:yes" : "SW:no";
-    // If version hasn't arrived yet, show nothing after "v" (or hide the badge if you prefer).
-    el.textContent = currentVersion ? `v ${currentVersion} · ${online} · ${controlled}` : `${online} · ${controlled}`;
+
+    // Never show "unknown". If we don't know yet, just omit the version briefly.
+    const vPart = currentVersion ? `v ${currentVersion} · ` : "";
+    const nPart = note ? ` · ${note}` : "";
+    el.textContent = `${vPart}${online} · ${controlled}${nPart}`;
   }
 
-  // Listen for the SW PUSH message (works even when uncontrolled becomes available)
-  if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.addEventListener("message", (event) => {
-      if (event.data && event.data.type === "VERSION" && event.data.version) {
-        currentVersion = event.data.version;
-        render();
-      }
+  function saveVersion(v) {
+    if (!v) return;
+    currentVersion = v;
+    localStorage.setItem(KEY, v);
+  }
+
+  // 1) Best: ask the SW (only works when controlled)
+  function requestFromController() {
+    return new Promise((resolve) => {
+      if (!navigator.serviceWorker || !navigator.serviceWorker.controller) return resolve(null);
+
+      const ch = new MessageChannel();
+      const t = setTimeout(() => resolve(null), 600);
+
+      ch.port1.onmessage = (e) => {
+        clearTimeout(t);
+        const v = (e.data && e.data.type === "VERSION") ? e.data.version : null;
+        resolve(v || null);
+      };
+
+      navigator.serviceWorker.controller.postMessage({ type: "GET_VERSION" }, [ch.port2]);
     });
   }
 
-  // If controlled, also REQUEST immediately (fast path)
-  async function requestVersionIfPossible() {
-    if (!navigator.serviceWorker || !navigator.serviceWorker.controller) return;
+  // 2) If not controlled yet (first visit), fetch SW JS and parse version = "v##"
+  async function fetchAndParseSwVersion() {
+    if (!navigator.onLine) return null;
 
-    const ch = new MessageChannel();
-    ch.port1.onmessage = (e) => {
-      if (e.data && e.data.type === "VERSION" && e.data.version) {
-        currentVersion = e.data.version;
-        render();
-      }
-    };
-    navigator.serviceWorker.controller.postMessage({ type: "GET_VERSION" }, [ch.port2]);
+    // cache-bust so we read the deployed file, not a stale HTTP cache
+    const url = `/sir-model-pwa/shinylive-sw.js?cb=${Date.now()}`;
+    const txt = await fetch(url, { cache: "no-store" }).then(r => r.ok ? r.text() : "");
+    if (!txt) return null;
+
+    // Match: var version = "v13"; OR let/const version = 'v13';
+    const m = txt.match(/\bversion\s*=\s*['"]([^'"]+)['"]/);
+    return m ? m[1] : null;
   }
 
-  window.addEventListener("online", render);
-  window.addEventListener("offline", render);
+  async function refreshVersion() {
+    render(); // immediate paint: no "unknown"
+
+    // Try controller first
+    let v = await requestFromController();
+    if (v) {
+      saveVersion(v);
+      render();
+      return;
+    }
+
+    // If not controlled, try parsing SW file (online)
+    v = await fetchAndParseSwVersion();
+    if (v) {
+      saveVersion(v);
+      render("ready after reopen"); // optional reassurance on first visit
+      return;
+    }
+
+    // If we still don't know, just keep the last known (or blank) — never "unknown"
+    render();
+  }
+
+  // Update on events
+  window.addEventListener("online", refreshVersion);
+  window.addEventListener("offline", () => render());
 
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.addEventListener("controllerchange", () => {
-      requestVersionIfPossible();
-      // also ask SW to broadcast (belt & suspenders)
-      if (navigator.serviceWorker.controller) {
-        navigator.serviceWorker.controller.postMessage({ type: "BROADCAST_VERSION" });
+    navigator.serviceWorker.addEventListener("controllerchange", refreshVersion);
+    navigator.serviceWorker.addEventListener("message", (event) => {
+      if (event.data && event.data.type === "VERSION" && event.data.version) {
+        saveVersion(event.data.version);
+        render();
       }
-      render();
     });
   }
 
   render();
-  requestVersionIfPossible();
+  refreshVersion();
 })();
 </script>
+
 
 
 </body>
