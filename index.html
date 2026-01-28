@@ -59,27 +59,55 @@
   <div style="height: 100vh; width: 100vw" id="root"></div>
   <div id="pwa-status" aria-live="polite"></div>
 
-  <script>
-    (function () {
-      const el = document.getElementById("pwa-status");
+<script>
+  (function () {
+    const el = document.getElementById("pwa-status");
 
-      function updateStatus() {
-        const online = navigator.onLine ? "online" : "OFFLINE";
-        const controlled = (navigator.serviceWorker && navigator.serviceWorker.controller) ? "SW:yes" : "SW:no";
-        const v = window.APP_VERSION || "unknown";
-        el.textContent = `v ${v} · ${online} · ${controlled}`;
+    function setText(version) {
+      const online = navigator.onLine ? "online" : "OFFLINE";
+      const controlled = (navigator.serviceWorker && navigator.serviceWorker.controller) ? "SW:yes" : "SW:no";
+      el.textContent = `v ${version || "?"} · ${online} · ${controlled}`;
+    }
+
+    async function getSwVersion() {
+      // If the page isn't controlled yet, the SW can't message back (no controller).
+      if (!navigator.serviceWorker || !navigator.serviceWorker.controller) {
+        setText("uncontrolled");
+        return;
       }
 
-      window.addEventListener("online", updateStatus);
-      window.addEventListener("offline", updateStatus);
+      return new Promise((resolve) => {
+        const ch = new MessageChannel();
+        const timeout = setTimeout(() => resolve("unknown"), 800);
 
-      if ("serviceWorker" in navigator) {
-        // Just update the label—NO reloads here.
-        navigator.serviceWorker.addEventListener("controllerchange", updateStatus);
-      }
+        ch.port1.onmessage = (e) => {
+          clearTimeout(timeout);
+          if (e.data && e.data.type === "VERSION") resolve(e.data.version);
+          else resolve("unknown");
+        };
 
-      updateStatus();
-    })();
-  </script>
+        navigator.serviceWorker.controller.postMessage({ type: "GET_VERSION" }, [ch.port2]);
+      });
+    }
+
+    async function refresh() {
+      const v = await getSwVersion();
+      setText(v);
+    }
+
+    window.addEventListener("online", refresh);
+    window.addEventListener("offline", refresh);
+
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        // NO reload here — just refresh the label.
+        refresh();
+      });
+    }
+
+    refresh();
+  })();
+</script>
+
 </body>
 </html>
