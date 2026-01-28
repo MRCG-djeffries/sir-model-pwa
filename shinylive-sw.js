@@ -2218,17 +2218,20 @@ function addCoiHeaders(resp) {
     headers
   });
 }
-
 self.addEventListener("message", (event) => {
-  if (event.data && event.data.type === "SKIP_WAITING") self.skipWaiting();
-});
+  if (!event.data) return;
 
+  if (event.data.type === "SKIP_WAITING") {
+    self.skipWaiting();
+    return;
+  }
 
-self.addEventListener("message", (event) => {
-  if (event.data && event.data.type === "GET_VERSION") {
+  if (event.data.type === "GET_VERSION") {
     event.ports[0]?.postMessage({ type: "VERSION", version });
+    return;
   }
 });
+
 
 //self.addEventListener("install", (event) => {
 //  event.waitUntil(
@@ -2239,7 +2242,7 @@ self.addEventListener("message", (event) => {
 
 self.addEventListener("install", (event) => {
   event.waitUntil((async () => {
-    await self.skipWaiting();
+    //await self.skipWaiting();
 
     const cache = await caches.open(version + cacheName);
     const base_path = dirname(self.location.pathname);
@@ -2295,7 +2298,7 @@ self.addEventListener("install", (event) => {
 //});
 self.addEventListener("activate", function(event) {
   event.waitUntil((async () => {
-    await self.clients.claim();
+    //await self.clients.claim();
 
     const current = version + cacheName;
     const keys = await caches.keys();
