@@ -120,12 +120,16 @@
   window.addEventListener("online", () => { initUpdateDeterministic(); refreshBadge(); });
   window.addEventListener("offline", refreshBadge);
 
-  if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.addEventListener("controllerchange", () => {
-      // Do NOT reload here. Just refresh badge.
-      refreshBadge();
-    });
-  }
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    // Reload once when a new SW takes control (prevents mixed-version hangs)
+    const KEY = "sw_reloaded_once";
+    if (sessionStorage.getItem(KEY) === "1") return;
+    sessionStorage.setItem(KEY, "1");
+    window.location.reload();
+  });
+}
+
 
   // Start
   setText("…");
