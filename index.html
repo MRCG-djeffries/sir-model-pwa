@@ -57,127 +57,57 @@
 
 <body>
   <div style="height: 100vh; width: 100vw" id="root"></div>
-
-  <!-- Status badge -->
   <div id="pwa-status" aria-live="polite"></div>
 
-  <!-- Update banner -->
-  <div id="update-banner" style="
-    display:none; position:fixed; left:0; right:0; top:0; z-index:10000;
-    padding:10px 12px; background:rgba(0,0,0,0.85); color:#fff;
-    font:14px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;">
-    A new version is available.
-    <button id="update-btn" style="
-      margin-left:10px; padding:6px 10px; border-radius:8px; border:0; cursor:pointer;">
-      Refresh
-    </button>
-  </div>
-
-  <script>
+<script>
   (function () {
-    const statusEl = document.getElementById("pwa-status");
-    const bannerEl = document.getElementById("update-banner");
-    const btnEl = document.getElementById("update-btn");
+    const el = document.getElementById("pwa-status");
 
-    let swVersion = null;
-    let userRequestedUpdate = false; // <-- critical
-
-    function setStatusText() {
+    function setText(version) {
       const online = navigator.onLine ? "online" : "OFFLINE";
-      const cached = (navigator.serviceWorker && navigator.serviceWorker.controller) ? "cached" : "live";
-      const vPart = swVersion ? `v ${swVersion} · ` : "";
-      statusEl.textContent = `${vPart}${online} · ${cached}`;
+      const controlled = (navigator.serviceWorker && navigator.serviceWorker.controller) ? "SW:yes" : "SW:no";
+      el.textContent = `v ${version || "?"} · ${online} · ${controlled}`;
     }
 
-    function requestSwVersion() {
-      return new Promise((resolve) => {
-        if (!navigator.serviceWorker || !navigator.serviceWorker.controller) return resolve(null);
+    async function getSwVersion() {
+      // If the page isn't controlled yet, the SW can't message back (no controller).
+      if (!navigator.serviceWorker || !navigator.serviceWorker.controller) {
+        setText("uncontrolled");
+        return;
+      }
 
+      return new Promise((resolve) => {
         const ch = new MessageChannel();
-        const t = setTimeout(() => resolve(null), 600);
+        const timeout = setTimeout(() => resolve("unknown"), 800);
 
         ch.port1.onmessage = (e) => {
-          clearTimeout(t);
-          const v = (e.data && e.data.type === "VERSION") ? e.data.version : null;
-          resolve(v || null);
+          clearTimeout(timeout);
+          if (e.data && e.data.type === "VERSION") resolve(e.data.version);
+          else resolve("unknown");
         };
 
         navigator.serviceWorker.controller.postMessage({ type: "GET_VERSION" }, [ch.port2]);
       });
     }
 
-    async function refreshStatus() {
-      setStatusText();
-      const v = await requestSwVersion();
-      if (v) swVersion = v;
-      setStatusText();
+    async function refresh() {
+      const v = await getSwVersion();
+      setText(v);
     }
 
-    function showUpdateBanner(reg) {
-      bannerEl.style.display = "block";
+    window.addEventListener("online", refresh);
+    window.addEventListener("offline", refresh);
 
-      btnEl.onclick = () => {
-        userRequestedUpdate = true;     // <-- only now do we allow reload
-        bannerEl.style.display = "none";
-
-        // Tell waiting SW to activate; SW must have SKIP_WAITING message handler
-        if (reg.waiting) reg.waiting.postMessage({ type: "SKIP_WAITING" });
-      };
-    }
-
-    async function initUpdateFlow() {
-      if (!("serviceWorker" in navigator)) return;
-
-      // Register SW (so we can reliably get the registration object)
-      const reg = await navigator.serviceWorker.register("/sir-model-pwa/shinylive-sw.js", {
-        scope: "/sir-model-pwa/"
-      });
-
-      // Ask browser to check for an update now (reduces “only after restart”)
-      try { await reg.update(); } catch (_) {}
-
-      // ONLY reload on controllerchange if user clicked Refresh
+    if ("serviceWorker" in navigator) {
       navigator.serviceWorker.addEventListener("controllerchange", () => {
-        if (userRequestedUpdate) {
-          window.location.reload();
-        }
+        // NO reload here — just refresh the label.
+        refresh();
       });
-
-      // If an update is already waiting, show banner
-      if (reg.waiting && navigator.serviceWorker.controller) {
-        showUpdateBanner(reg);
-      }
-
-      // If a new one is found later, show banner when it's installed (waiting)
-      reg.addEventListener("updatefound", () => {
-        const newWorker = reg.installing;
-        if (!newWorker) return;
-
-        newWorker.addEventListener("statechange", () => {
-          if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
-            showUpdateBanner(reg);
-          }
-        });
-      });
-
-      // Badge updates
-      window.addEventListener("online", refreshStatus);
-      window.addEventListener("offline", setStatusText);
-
-      navigator.serviceWorker.addEventListener("message", (event) => {
-        if (event.data && event.data.type === "VERSION" && event.data.version) {
-          swVersion = event.data.version;
-          setStatusText();
-        }
-      });
-
-      setStatusText();
-      refreshStatus();
     }
 
-    // Start only after load to avoid interfering with Shinylive boot
-    window.addEventListener("load", initUpdateFlow);
+    refresh();
   })();
-  </script>
+</script>
+
 </body>
 </html>
