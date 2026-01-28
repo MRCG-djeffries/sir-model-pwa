@@ -5,15 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Shiny App</title>
 
-  <!-- Keep your working SW registration; do NOT add controllerchange reload logic -->
+  <!-- Service worker registration (unchanged, simple, safe) -->
   <script>
-    // Set this during build/deploy. Change it when you deploy new files.
-    // (You can also inject it from a build step.)
-    window.APP_VERSION = "2026-01-28.1";
-
     if ("serviceWorker" in navigator) {
       window.addEventListener("load", () => {
-        navigator.serviceWorker.register("/sir-model-pwa/shinylive-sw.js", { scope: "/sir-model-pwa/" })
+        navigator.serviceWorker
+          .register("/sir-model-pwa/shinylive-sw.js", { scope: "/sir-model-pwa/" })
           .catch((err) => console.warn("SW registration failed:", err));
       });
     }
@@ -21,6 +18,7 @@
 
   <link rel="manifest" href="/sir-model-pwa/manifest.json">
 
+  <!-- Shinylive -->
   <script type="module">
     import { runExportedApp } from "/sir-model-pwa/shinylive/shinylive.js";
     runExportedApp({
@@ -35,7 +33,6 @@
   <link rel="stylesheet" href="/sir-model-pwa/shinylive/shinylive.css" />
 
   <style>
-    /* Small, unobtrusive status badge */
     #pwa-status {
       position: fixed;
       right: 10px;
@@ -62,82 +59,47 @@
 <script>
 (function () {
   const el = document.getElementById("pwa-status");
-  const RELOADED = "pwa_updated_once";
+  const LS_KEY = "sir_model_last_version";
+  const VERSION_URL = "/sir-model-pwa/version.json";
 
-  function setText(version) {
+  let current = (localStorage.getItem(LS_KEY) || "").trim();
+
+  function render() {
     const online = navigator.onLine ? "online" : "OFFLINE";
-    const controlled = (navigator.serviceWorker && navigator.serviceWorker.controller) ? "SW:yes" : "SW:no";
-    el.textContent = `v ${version || "?"} · ${online} · ${controlled}`;
+    const cached = navigator.serviceWorker && navigator.serviceWorker.controller ? "cached" : "live";
+    const v = current || "…";
+    el.textContent = `v ${v} · ${online} · ${cached}`;
   }
 
-  function requestVersionFromController() {
-    return new Promise((resolve) => {
-      if (!navigator.serviceWorker || !navigator.serviceWorker.controller) return resolve(null);
+  async function refreshVersion() {
+    // Always render immediately (offline-safe)
+    render();
 
-      const ch = new MessageChannel();
-      const timeout = setTimeout(() => resolve(null), 800);
+    try {
+      // This will work:
+      // - online (network)
+      // - offline AFTER first successful install (served from SW cache)
+      const r = await fetch(VERSION_URL);
+      if (!r.ok) return;
 
-      ch.port1.onmessage = (e) => {
-        clearTimeout(timeout);
-        resolve(e?.data?.type === "VERSION" ? e.data.version : null);
-      };
-
-      navigator.serviceWorker.controller.postMessage({ type: "GET_VERSION" }, [ch.port2]);
-    });
-  }
-
-  async function refreshBadge() {
-    const v = await requestVersionFromController();
-    setText(v || (navigator.serviceWorker?.controller ? "…" : "uncontrolled"));
-  }
-
-  async function initUpdateDeterministic() {
-    if (!("serviceWorker" in navigator)) return;
-
-    // Get the registration and ask the browser to check for updates now.
-    const reg = await navigator.serviceWorker.getRegistration("/sir-model-pwa/");
-    if (!reg) return;
-
-    try { await reg.update(); } catch (_) {}
-
-    // If a new SW is already waiting OR installing, we do a single “startup reload”
-    // to ensure the newest SW ends up controlling this session.
-    const needsStartupReload = !!reg.waiting || !!reg.installing;
-
-    if (needsStartupReload && sessionStorage.getItem(RELOADED) !== "1") {
-      sessionStorage.setItem(RELOADED, "1");
-      // This reload happens at startup only; after reload it will not loop.
-      window.location.reload();
-      return;
-    }
-
-    // Once stable, clear flag for future updates
-    if (navigator.serviceWorker.controller) {
-      sessionStorage.removeItem(RELOADED);
+      const j = await r.json();
+      if (j && typeof j.version === "string") {
+        current = j.version.trim();
+        localStorage.setItem(LS_KEY, current);
+        render();
+      }
+    } catch {
+      // Truly first-ever offline open → no cache yet → keep last-known / …
+      render();
     }
   }
 
-  window.addEventListener("online", () => { initUpdateDeterministic(); refreshBadge(); });
-  window.addEventListener("offline", refreshBadge);
+  window.addEventListener("online", refreshVersion);
+  window.addEventListener("offline", render);
 
-if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.addEventListener("controllerchange", () => {
-    // Reload once when a new SW takes control (prevents mixed-version hangs)
-    const KEY = "sw_reloaded_once";
-    if (sessionStorage.getItem(KEY) === "1") return;
-    sessionStorage.setItem(KEY, "1");
-    window.location.reload();
-  });
-}
-
-
-  // Start
-  setText("…");
-  initUpdateDeterministic();
-  refreshBadge();
+  refreshVersion();
 })();
 </script>
-
 
 </body>
 </html>
