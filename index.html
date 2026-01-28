@@ -52,48 +52,60 @@
 
   <div style="height: calc(100vh - 30px); width: 100vw" id="root"></div>
 
-  <script>
-    function updateStatus(extra) {
-      const online = navigator.onLine ? "Online" : "Offline";
-      const controlled = (navigator.serviceWorker && navigator.serviceWorker.controller) ? "SW controlling" : "SW not controlling";
-      document.getElementById("net-state").textContent = extra ? `${online} · ${controlled} · ${extra}` : `${online} · ${controlled}`;
+<script>
+  function updateStatus(extra) {
+    const online = navigator.onLine ? "Online" : "Offline";
+    const controlled = (navigator.serviceWorker && navigator.serviceWorker.controller) ? "SW controlling" : "SW not controlling";
+    document.getElementById("net-state").textContent =
+      extra ? `${online} · ${controlled} · ${extra}` : `${online} · ${controlled}`;
+  }
+
+  window.addEventListener("online", () => updateStatus());
+  window.addEventListener("offline", () => updateStatus());
+  updateStatus();
+
+  async function requestSWVersion() {
+    const el = document.getElementById("app-version");
+    if (!("serviceWorker" in navigator)) { el.textContent = "(no SW)"; return; }
+
+    // If not yet controlled, wait for controllerchange
+    if (!navigator.serviceWorker.controller) {
+      el.textContent = "(installing…)";
+      return;
     }
 
-    window.addEventListener("online", () => updateStatus());
-    window.addEventListener("offline", () => updateStatus());
-    navigator.serviceWorker?.addEventListener("controllerchange", () => updateStatus("controller changed"));
+    // Ask controller for version
+    const chan = new MessageChannel();
+    const timeout = setTimeout(() => {
+      el.textContent = "(no reply)";
+    }, 1500);
 
-    updateStatus();
-
-    // Ask the active SW for its version (so you only change version in shinylive-sw.js)
-    async function loadSWVersion() {
-      try {
-        if (!("serviceWorker" in navigator)) return;
-
-        // Wait for the registration to be ready
-        await navigator.serviceWorker.ready;
-
-        // If there's no controller yet, it might be the first load after install
-        if (!navigator.serviceWorker.controller) {
-          document.getElementById("app-version").textContent = "(installing…)";
-          return;
-        }
-
-        const chan = new MessageChannel();
-        chan.port1.onmessage = (e) => {
-          if (e.data && e.data.type === "VERSION") {
-            document.getElementById("app-version").textContent = e.data.version;
-          }
-        };
-
-        navigator.serviceWorker.controller.postMessage({ type: "GET_VERSION" }, [chan.port2]);
-      } catch (e) {
-        document.getElementById("app-version").textContent = "(unknown)";
+    chan.port1.onmessage = (e) => {
+      clearTimeout(timeout);
+      if (e.data && e.data.type === "VERSION") {
+        el.textContent = e.data.version;
+      } else {
+        el.textContent = "(bad reply)";
       }
-    }
+    };
 
-    loadSWVersion();
-  </script>
+    navigator.serviceWorker.controller.postMessage({ type: "GET_VERSION" }, [chan.port2]);
+  }
+
+  // First attempt
+  requestSWVersion();
+
+  // When SW takes control (often on 2nd load or after claim), try again
+  navigator.serviceWorker?.addEventListener("controllerchange", () => {
+    updateStatus("controller changed");
+    requestSWVersion();
+  });
+
+  // Also retry shortly after load (covers races where controller appears moments later)
+  setTimeout(requestSWVersion, 500);
+  setTimeout(requestSWVersion, 1500);
+</script>
+
 </body>
 
 </html>
