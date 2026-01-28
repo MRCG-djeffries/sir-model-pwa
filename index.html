@@ -60,54 +60,60 @@
   <div id="pwa-status" aria-live="polite"></div>
 
 <script>
-  (function () {
-    const el = document.getElementById("pwa-status");
+(function () {
+  const el = document.getElementById("pwa-status");
+  let currentVersion = ""; // start blank (not "unknown")
 
-    function setText(version) {
-      const online = navigator.onLine ? "online" : "OFFLINE";
-      const controlled = (navigator.serviceWorker && navigator.serviceWorker.controller) ? "SW:yes" : "SW:no";
-      el.textContent = `v ${version || "?"} · ${online} · ${controlled}`;
-    }
+  function render() {
+    const online = navigator.onLine ? "online" : "OFFLINE";
+    const controlled = (navigator.serviceWorker && navigator.serviceWorker.controller) ? "SW:yes" : "SW:no";
+    // If version hasn't arrived yet, show nothing after "v" (or hide the badge if you prefer).
+    el.textContent = currentVersion ? `v ${currentVersion} · ${online} · ${controlled}` : `${online} · ${controlled}`;
+  }
 
-    async function getSwVersion() {
-      // If the page isn't controlled yet, the SW can't message back (no controller).
-      if (!navigator.serviceWorker || !navigator.serviceWorker.controller) {
-        setText("uncontrolled");
-        return;
+  // Listen for the SW PUSH message (works even when uncontrolled becomes available)
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.addEventListener("message", (event) => {
+      if (event.data && event.data.type === "VERSION" && event.data.version) {
+        currentVersion = event.data.version;
+        render();
       }
+    });
+  }
 
-      return new Promise((resolve) => {
-        const ch = new MessageChannel();
-        const timeout = setTimeout(() => resolve("unknown"), 800);
+  // If controlled, also REQUEST immediately (fast path)
+  async function requestVersionIfPossible() {
+    if (!navigator.serviceWorker || !navigator.serviceWorker.controller) return;
 
-        ch.port1.onmessage = (e) => {
-          clearTimeout(timeout);
-          if (e.data && e.data.type === "VERSION") resolve(e.data.version);
-          else resolve("unknown");
-        };
+    const ch = new MessageChannel();
+    ch.port1.onmessage = (e) => {
+      if (e.data && e.data.type === "VERSION" && e.data.version) {
+        currentVersion = e.data.version;
+        render();
+      }
+    };
+    navigator.serviceWorker.controller.postMessage({ type: "GET_VERSION" }, [ch.port2]);
+  }
 
-        navigator.serviceWorker.controller.postMessage({ type: "GET_VERSION" }, [ch.port2]);
-      });
-    }
+  window.addEventListener("online", render);
+  window.addEventListener("offline", render);
 
-    async function refresh() {
-      const v = await getSwVersion();
-      setText(v);
-    }
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      requestVersionIfPossible();
+      // also ask SW to broadcast (belt & suspenders)
+      if (navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({ type: "BROADCAST_VERSION" });
+      }
+      render();
+    });
+  }
 
-    window.addEventListener("online", refresh);
-    window.addEventListener("offline", refresh);
-
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.addEventListener("controllerchange", () => {
-        // NO reload here — just refresh the label.
-        refresh();
-      });
-    }
-
-    refresh();
-  })();
+  render();
+  requestVersionIfPossible();
+})();
 </script>
+
 
 </body>
 </html>
