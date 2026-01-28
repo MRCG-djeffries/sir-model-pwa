@@ -2206,16 +2206,6 @@ function asgiToRes(res, body) {
 var useCaching = false;
 var cacheName = "::shinyliveServiceworker";
 var version = "v17";
-// added so can still update version when not yet controlled
-async function broadcastVersion() {
-  const allClients = await self.clients.matchAll({
-    type: "window",
-    includeUncontrolled: true
-  });
-  for (const client of allClients) {
-    client.postMessage({ type: "VERSION", version });
-  }
-}
 
 function addCoiHeaders(resp) {
   const headers = new Headers(resp.headers);
@@ -2229,31 +2219,13 @@ function addCoiHeaders(resp) {
   });
 }
 
-// handles uncontrolled
-self.addEventListener("install", (event) => {
-  // Don’t force skipWaiting unless you truly want aggressive updates.
-  // Keeping it conservative is fine; version display will still work.
-  event.waitUntil(broadcastVersion());
-});
-self.addEventListener("activate", (event) => {
-  event.waitUntil((async () => {
-    await broadcastVersion();
-  })());
-});
+
+
 self.addEventListener("message", (event) => {
   if (event.data && event.data.type === "GET_VERSION") {
     event.ports[0]?.postMessage({ type: "VERSION", version });
   }
-  if (event.data && event.data.type === "BROADCAST_VERSION") {
-    event.waitUntil(broadcastVersion());
-  }
 });
-
-//self.addEventListener("message", (event) => {
-//  if (event.data && event.data.type === "GET_VERSION") {
-//    event.ports[0]?.postMessage({ type: "VERSION", version });
-//  }
-//});
 
 //self.addEventListener("install", (event) => {
 //  event.waitUntil(
