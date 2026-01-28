@@ -2217,6 +2217,12 @@ function addCoiHeaders(resp) {
     headers
   });
 }
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "GET_VERSION") {
+    event.ports[0]?.postMessage({ type: "VERSION", version });
+  }
+});
+
 //self.addEventListener("install", (event) => {
 //  event.waitUntil(
 //    Promise.all([self.skipWaiting(), caches.open(version + cacheName)])
