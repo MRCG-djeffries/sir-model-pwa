@@ -5,20 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Shiny App</title>
 
-  <!-- Service worker registration (unchanged, simple, safe) -->
-  <script>
-    if ("serviceWorker" in navigator) {
-      window.addEventListener("load", () => {
-        navigator.serviceWorker
-          .register("/sir-model-pwa/shinylive-sw.js", { scope: "/sir-model-pwa/" })
-          .catch((err) => console.warn("SW registration failed:", err));
-      });
-    }
-  </script>
-
   <link rel="manifest" href="/sir-model-pwa/manifest.json">
 
-  <!-- Shinylive -->
   <script type="module">
     import { runExportedApp } from "/sir-model-pwa/shinylive/shinylive.js";
     runExportedApp({
@@ -59,45 +47,136 @@
 <script>
 (function () {
   const el = document.getElementById("pwa-status");
-  const LS_KEY = "sir_model_last_version";
+  const SCOPE = "/sir-model-pwa/";
+  const SW_URL = "/sir-model-pwa/shinylive-sw.js";
   const VERSION_URL = "/sir-model-pwa/version.json";
 
-  let current = (localStorage.getItem(LS_KEY) || "").trim();
+  const LS_REL = "sir_release_version_last";
+  let releaseV = (localStorage.getItem(LS_REL) || "").trim();
+  let runtimeV = ""; // from SW when controlled
 
-  function render() {
+  function render(note) {
     const online = navigator.onLine ? "online" : "OFFLINE";
-    const cached = navigator.serviceWorker && navigator.serviceWorker.controller ? "cached" : "live";
-    const v = current || "…";
-    el.textContent = `v ${v} · ${online} · ${cached}`;
+    const cached = navigator.serviceWorker?.controller ? "cached" : "live";
+    const v = runtimeV || releaseV || "…";
+    el.textContent = `v ${v} · ${online} · ${cached}${note ? " · " + note : ""}`;
   }
 
-  async function refreshVersion() {
-    // Always render immediately (offline-safe)
-    render();
+  function parseV(v) {
+    // supports "v6", "6", "v6.1"
+    const m = String(v || "").match(/(\d+(\.\d+)?)/);
+    return m ? Number(m[1]) : NaN;
+  }
+
+  function requestRuntimeVersion() {
+    return new Promise((resolve) => {
+      if (!navigator.serviceWorker?.controller) return resolve(null);
+
+      const ch = new MessageChannel();
+      const t = setTimeout(() => resolve(null), 600);
+
+      ch.port1.onmessage = (e) => {
+        clearTimeout(t);
+        resolve(e?.data?.type === "VERSION" ? e.data.version : null);
+      };
+
+      navigator.serviceWorker.controller.postMessage({ type: "GET_VERSION" }, [ch.port2]);
+    });
+  }
+
+  async function fetchReleaseVersionFresh() {
+    // Online: cache-bust to avoid GH Pages / SW cached version.json
+    // Offline: don't fetch; keep last-known
+    if (!navigator.onLine) return releaseV || null;
 
     try {
-      // This will work:
-      // - online (network)
-      // - offline AFTER first successful install (served from SW cache)
-      const r = await fetch(VERSION_URL);
-      if (!r.ok) return;
-
+      const r = await fetch(`${VERSION_URL}?cb=${Date.now()}`, { cache: "no-store" });
+      if (!r.ok) return releaseV || null;
       const j = await r.json();
-      if (j && typeof j.version === "string") {
-        current = j.version.trim();
-        localStorage.setItem(LS_KEY, current);
-        render();
+      const v = (j?.version || "").trim();
+      if (v) {
+        releaseV = v;
+        localStorage.setItem(LS_REL, v);
       }
+      return v || null;
     } catch {
-      // Truly first-ever offline open → no cache yet → keep last-known / …
-      render();
+      return releaseV || null;
     }
   }
 
-  window.addEventListener("online", refreshVersion);
-  window.addEventListener("offline", render);
+  async function registerSW() {
+    if (!("serviceWorker" in navigator)) return null;
 
-  refreshVersion();
+    // updateViaCache:"none" reduces “stuck on old SW script”
+    return await navigator.serviceWorker.register(SW_URL, {
+      scope: SCOPE,
+      updateViaCache: "none"
+    });
+  }
+
+  async function robustUpdateCheck() {
+    // No update attempts offline
+    if (!navigator.onLine) return;
+
+    const reg = await navigator.serviceWorker.getRegistration(SCOPE);
+    if (!reg) return;
+
+    // Force the browser to check for a newer SW now
+    try { await reg.update(); } catch (_) {}
+
+    // If a new SW is waiting, activate it and reload once
+    if (reg.waiting) {
+      render("updating…");
+
+      const KEY = "sir_reload_once";
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        if (sessionStorage.getItem(KEY) === "1") return;
+        sessionStorage.setItem(KEY, "1");
+        window.location.reload();
+      });
+
+      reg.waiting.postMessage({ type: "SKIP_WAITING" });
+    }
+  }
+
+  async function refreshAll() {
+    render();
+
+    // Register SW (safe; does not touch install logic)
+    await registerSW();
+
+    // Update display from release.json (fresh when online)
+    await fetchReleaseVersionFresh();
+    render();
+
+    // Runtime version (truth) if controlled
+    runtimeV = (await requestRuntimeVersion()) || runtimeV;
+    render();
+
+    // If release is newer than runtime, push the update flow
+    const rNum = parseV(releaseV);
+    const tNum = parseV(runtimeV);
+    if (isFinite(rNum) && isFinite(tNum) && rNum > tNum) {
+      await robustUpdateCheck();
+    } else {
+      // still do a lightweight update check sometimes when online
+      await robustUpdateCheck();
+    }
+  }
+
+  window.addEventListener("online", refreshAll);
+  window.addEventListener("offline", () => render());
+
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.addEventListener("controllerchange", async () => {
+      // After reload, controllerchange may fire; just refresh label
+      runtimeV = (await requestRuntimeVersion()) || runtimeV;
+      render();
+    });
+  }
+
+  render();
+  refreshAll();
 })();
 </script>
 
