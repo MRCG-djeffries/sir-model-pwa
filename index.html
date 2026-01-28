@@ -3,27 +3,23 @@
 
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" /> 
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Shiny App</title>
-  <!--<script src="/sir-model-pwa/shinylive/load-shinylive-sw.js" type="module"></script>-->
-  <script>
-  if ("serviceWorker" in navigator) {
-    window.addEventListener("load", async () => {
-      await navigator.serviceWorker.register("/sir-model-pwa/shinylive-sw.js", {
-        scope: "/sir-model-pwa/"
-      });
-    });
-  }
-</script>
 
-  <link rel="manifest" href="/sir-model-pwa/manifest.json">
-  <!--<script>
+  <!-- Register Shinylive SW explicitly -->
+  <script>
     if ("serviceWorker" in navigator) {
-      window.addEventListener("load", () => {
-        navigator.serviceWorker.register("/sir-model-pwa/service-worker.js", { scope: "/sir-model-pwa/" });
+      window.addEventListener("load", async () => {
+        await navigator.serviceWorker.register("/sir-model-pwa/shinylive-sw.js", {
+          scope: "/sir-model-pwa/"
+        });
       });
     }
-  </script> -->
+  </script>
+
+  <link rel="manifest" href="/sir-model-pwa/manifest.json">
+
+  <!-- Shinylive app bootstrap -->
   <script type="module">
     import { runExportedApp } from "/sir-model-pwa/shinylive/shinylive.js";
     runExportedApp({
@@ -33,15 +29,71 @@
       relPath: "/sir-model-pwa/",
     });
   </script>
+
   <link rel="stylesheet" href="/sir-model-pwa/shinylive/style-resets.css" />
   <link rel="stylesheet" href="/sir-model-pwa/shinylive/shinylive.css" />
-
 </head>
 
 <body>
+  <!-- Status bar -->
+  <div id="pwa-status" style="
+    position: fixed; top: 0; left: 0; right: 0;
+    padding: 6px 10px;
+    font: 12px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+    background: rgba(245,245,245,0.95);
+    border-bottom: 1px solid #ddd;
+    z-index: 999999;
+  ">
+    <strong>SIR Model</strong> · Version: <span id="app-version">…</span>
+    · <span id="net-state">…</span>
+  </div>
+  <!-- Spacer so bar doesn't cover app -->
+  <div style="height: 30px;"></div>
 
-  <div style="height: 100vh; width: 100vw" id="root"></div>
+  <div style="height: calc(100vh - 30px); width: 100vw" id="root"></div>
 
+  <script>
+    function updateStatus(extra) {
+      const online = navigator.onLine ? "Online" : "Offline";
+      const controlled = (navigator.serviceWorker && navigator.serviceWorker.controller) ? "SW controlling" : "SW not controlling";
+      document.getElementById("net-state").textContent = extra ? `${online} · ${controlled} · ${extra}` : `${online} · ${controlled}`;
+    }
+
+    window.addEventListener("online", () => updateStatus());
+    window.addEventListener("offline", () => updateStatus());
+    navigator.serviceWorker?.addEventListener("controllerchange", () => updateStatus("controller changed"));
+
+    updateStatus();
+
+    // Ask the active SW for its version (so you only change version in shinylive-sw.js)
+    async function loadSWVersion() {
+      try {
+        if (!("serviceWorker" in navigator)) return;
+
+        // Wait for the registration to be ready
+        await navigator.serviceWorker.ready;
+
+        // If there's no controller yet, it might be the first load after install
+        if (!navigator.serviceWorker.controller) {
+          document.getElementById("app-version").textContent = "(installing…)";
+          return;
+        }
+
+        const chan = new MessageChannel();
+        chan.port1.onmessage = (e) => {
+          if (e.data && e.data.type === "VERSION") {
+            document.getElementById("app-version").textContent = e.data.version;
+          }
+        };
+
+        navigator.serviceWorker.controller.postMessage({ type: "GET_VERSION" }, [chan.port2]);
+      } catch (e) {
+        document.getElementById("app-version").textContent = "(unknown)";
+      }
+    }
+
+    loadSWVersion();
+  </script>
 </body>
 
 </html>
