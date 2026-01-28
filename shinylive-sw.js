@@ -2242,7 +2242,7 @@ self.addEventListener("message", (event) => {
 
 self.addEventListener("install", (event) => {
   event.waitUntil((async () => {
-    await self.skipWaiting();
+    //await self.skipWaiting();
 
     const cache = await caches.open(version + cacheName);
     const base_path = dirname(self.location.pathname);
@@ -2298,7 +2298,7 @@ self.addEventListener("install", (event) => {
 //});
 self.addEventListener("activate", function(event) {
   event.waitUntil((async () => {
-    await self.clients.claim();
+    //await self.clients.claim();
 
     const current = version + cacheName;
     const keys = await caches.keys();
