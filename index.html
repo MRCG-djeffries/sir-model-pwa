@@ -60,54 +60,80 @@
   <div id="pwa-status" aria-live="polite"></div>
 
 <script>
-  (function () {
-    const el = document.getElementById("pwa-status");
+(function () {
+  const el = document.getElementById("pwa-status");
+  const RELOADED = "pwa_updated_once";
 
-    function setText(version) {
-      const online = navigator.onLine ? "online" : "OFFLINE";
-      const controlled = (navigator.serviceWorker && navigator.serviceWorker.controller) ? "SW:yes" : "SW:no";
-      el.textContent = `v ${version || "?"} · ${online} · ${controlled}`;
+  function setText(version) {
+    const online = navigator.onLine ? "online" : "OFFLINE";
+    const controlled = (navigator.serviceWorker && navigator.serviceWorker.controller) ? "SW:yes" : "SW:no";
+    el.textContent = `v ${version || "?"} · ${online} · ${controlled}`;
+  }
+
+  function requestVersionFromController() {
+    return new Promise((resolve) => {
+      if (!navigator.serviceWorker || !navigator.serviceWorker.controller) return resolve(null);
+
+      const ch = new MessageChannel();
+      const timeout = setTimeout(() => resolve(null), 800);
+
+      ch.port1.onmessage = (e) => {
+        clearTimeout(timeout);
+        resolve(e?.data?.type === "VERSION" ? e.data.version : null);
+      };
+
+      navigator.serviceWorker.controller.postMessage({ type: "GET_VERSION" }, [ch.port2]);
+    });
+  }
+
+  async function refreshBadge() {
+    const v = await requestVersionFromController();
+    setText(v || (navigator.serviceWorker?.controller ? "…" : "uncontrolled"));
+  }
+
+  async function initUpdateDeterministic() {
+    if (!("serviceWorker" in navigator)) return;
+
+    // Get the registration and ask the browser to check for updates now.
+    const reg = await navigator.serviceWorker.getRegistration("/sir-model-pwa/");
+    if (!reg) return;
+
+    try { await reg.update(); } catch (_) {}
+
+    // If a new SW is already waiting OR installing, we do a single “startup reload”
+    // to ensure the newest SW ends up controlling this session.
+    const needsStartupReload = !!reg.waiting || !!reg.installing;
+
+    if (needsStartupReload && sessionStorage.getItem(RELOADED) !== "1") {
+      sessionStorage.setItem(RELOADED, "1");
+      // This reload happens at startup only; after reload it will not loop.
+      window.location.reload();
+      return;
     }
 
-    async function getSwVersion() {
-      // If the page isn't controlled yet, the SW can't message back (no controller).
-      if (!navigator.serviceWorker || !navigator.serviceWorker.controller) {
-        setText("uncontrolled");
-        return;
-      }
-
-      return new Promise((resolve) => {
-        const ch = new MessageChannel();
-        const timeout = setTimeout(() => resolve("unknown"), 800);
-
-        ch.port1.onmessage = (e) => {
-          clearTimeout(timeout);
-          if (e.data && e.data.type === "VERSION") resolve(e.data.version);
-          else resolve("unknown");
-        };
-
-        navigator.serviceWorker.controller.postMessage({ type: "GET_VERSION" }, [ch.port2]);
-      });
+    // Once stable, clear flag for future updates
+    if (navigator.serviceWorker.controller) {
+      sessionStorage.removeItem(RELOADED);
     }
+  }
 
-    async function refresh() {
-      const v = await getSwVersion();
-      setText(v);
-    }
+  window.addEventListener("online", () => { initUpdateDeterministic(); refreshBadge(); });
+  window.addEventListener("offline", refreshBadge);
 
-    window.addEventListener("online", refresh);
-    window.addEventListener("offline", refresh);
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      // Do NOT reload here. Just refresh badge.
+      refreshBadge();
+    });
+  }
 
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.addEventListener("controllerchange", () => {
-        // NO reload here — just refresh the label.
-        refresh();
-      });
-    }
-
-    refresh();
-  })();
+  // Start
+  setText("…");
+  initUpdateDeterministic();
+  refreshBadge();
+})();
 </script>
+
 
 </body>
 </html>
