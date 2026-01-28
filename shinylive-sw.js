@@ -2205,7 +2205,7 @@ function asgiToRes(res, body) {
 // src/shinylive-sw.ts
 var useCaching = false;
 var cacheName = "::shinyliveServiceworker";
-var version = "v16";
+var version = "v17";
 // added so can still update version when not yet controlled
 async function broadcastVersion() {
   const allClients = await self.clients.matchAll({
