@@ -2297,21 +2297,38 @@ self.addEventListener("install", (event) => {
 //    })()
 //  );
 //});
-self.addEventListener("activate", function(event) {
+
+self.addEventListener("activate", (event) => {
   event.waitUntil((async () => {
     await self.clients.claim();
 
-    const current = version + cacheName;
+    const current = version + cacheName;           // e.g. "v8::shinyliveServiceworker"
+    const marker  = cacheName;                    // e.g. "::shinyliveServiceworker"
     const keys = await caches.keys();
 
     await Promise.all(
       keys
-        // delete only shinylive SW caches
-        .filter((k) => k.endsWith(cacheName) && k !== current)
+        // delete only THIS app's versioned caches
+        .filter((k) => k.includes(marker) && k !== current)
         .map((k) => caches.delete(k))
     );
   })());
 });
+//self.addEventListener("activate", function(event) {
+//  event.waitUntil((async () => {
+//    await self.clients.claim();
+
+ //   const current = version + cacheName;
+ //   const keys = await caches.keys();
+
+ //   await Promise.all(
+ //     keys
+        // delete only shinylive SW caches
+  //      .filter((k) => k.endsWith(cacheName) && k !== current)
+   //     .map((k) => caches.delete(k))
+  //  );
+//  })());
+//});
 
 //self.addEventListener("activate", function(event) {
 //  event.waitUntil(
