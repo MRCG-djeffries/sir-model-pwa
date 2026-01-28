@@ -57,126 +57,127 @@
 
 <body>
   <div style="height: 100vh; width: 100vw" id="root"></div>
+
+  <!-- Status badge -->
   <div id="pwa-status" aria-live="polite"></div>
 
-<div id="pwa-status" aria-live="polite"></div>
+  <!-- Update banner -->
+  <div id="update-banner" style="
+    display:none; position:fixed; left:0; right:0; top:0; z-index:10000;
+    padding:10px 12px; background:rgba(0,0,0,0.85); color:#fff;
+    font:14px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;">
+    A new version is available.
+    <button id="update-btn" style="
+      margin-left:10px; padding:6px 10px; border-radius:8px; border:0; cursor:pointer;">
+      Refresh
+    </button>
+  </div>
 
-<!-- Small update banner -->
-<div id="update-banner" style="
-  display:none; position:fixed; left:0; right:0; top:0; z-index:10000;
-  padding:10px 12px; background:rgba(0,0,0,0.85); color:#fff;
-  font:14px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;">
-  A new version is available.
-  <button id="update-btn" style="
-    margin-left:10px; padding:6px 10px; border-radius:8px; border:0; cursor:pointer;">
-    Refresh
-  </button>
-</div>
+  <script>
+  (function () {
+    const statusEl = document.getElementById("pwa-status");
+    const bannerEl = document.getElementById("update-banner");
+    const btnEl = document.getElementById("update-btn");
 
-<script>
-(function () {
-  const statusEl = document.getElementById("pwa-status");
-  const bannerEl = document.getElementById("update-banner");
-  const btnEl = document.getElementById("update-btn");
+    let swVersion = null;
+    let userRequestedUpdate = false; // <-- critical
 
-  let swVersion = null;
-
-  function setStatusText() {
-    const online = navigator.onLine ? "online" : "OFFLINE";
-    const cached = (navigator.serviceWorker && navigator.serviceWorker.controller) ? "cached" : "live";
-
-    // Professional behavior: do NOT show a fake/wrong/unknown version.
-    // If we don't know it yet, just omit it.
-    const vPart = swVersion ? `v ${swVersion} · ` : "";
-    statusEl.textContent = `${vPart}${online} · ${cached}`;
-  }
-
-  function requestSwVersion() {
-    return new Promise((resolve) => {
-      if (!navigator.serviceWorker || !navigator.serviceWorker.controller) return resolve(null);
-
-      const ch = new MessageChannel();
-      const t = setTimeout(() => resolve(null), 600);
-
-      ch.port1.onmessage = (e) => {
-        clearTimeout(t);
-        const v = (e.data && e.data.type === "VERSION") ? e.data.version : null;
-        resolve(v || null);
-      };
-
-      navigator.serviceWorker.controller.postMessage({ type: "GET_VERSION" }, [ch.port2]);
-    });
-  }
-
-  async function refreshStatus() {
-    setStatusText();
-    const v = await requestSwVersion();
-    if (v) swVersion = v;
-    setStatusText();
-  }
-
-  function showUpdateBanner(reg) {
-    bannerEl.style.display = "block";
-    btnEl.onclick = () => {
-      // Ask the waiting worker to activate now (requires SKIP_WAITING handler in SW)
-      if (reg.waiting) reg.waiting.postMessage({ type: "SKIP_WAITING" });
-    };
-  }
-
-  async function initUpdateFlow() {
-    if (!("serviceWorker" in navigator)) return;
-
-    // Listen for the new worker taking control; one reload makes the new assets active.
-    navigator.serviceWorker.addEventListener("controllerchange", () => {
-      // If an update is taking over, reload once to ensure all assets match.
-      // (This is exactly what “professional” PWAs do.)
-      window.location.reload();
-    });
-
-    // Wait until the SW registration is available.
-    const reg = await navigator.serviceWorker.getRegistration("/sir-model-pwa/");
-    if (!reg) return;
-
-    // If an update is already waiting, show banner.
-    if (reg.waiting && navigator.serviceWorker.controller) {
-      showUpdateBanner(reg);
+    function setStatusText() {
+      const online = navigator.onLine ? "online" : "OFFLINE";
+      const cached = (navigator.serviceWorker && navigator.serviceWorker.controller) ? "cached" : "live";
+      const vPart = swVersion ? `v ${swVersion} · ` : "";
+      statusEl.textContent = `${vPart}${online} · ${cached}`;
     }
 
-    // If a new one is found later, show banner when it's installed.
-    reg.addEventListener("updatefound", () => {
-      const newWorker = reg.installing;
-      if (!newWorker) return;
+    function requestSwVersion() {
+      return new Promise((resolve) => {
+        if (!navigator.serviceWorker || !navigator.serviceWorker.controller) return resolve(null);
 
-      newWorker.addEventListener("statechange", () => {
-        // "installed" + controller exists => update is ready (waiting)
-        if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
-          showUpdateBanner(reg);
+        const ch = new MessageChannel();
+        const t = setTimeout(() => resolve(null), 600);
+
+        ch.port1.onmessage = (e) => {
+          clearTimeout(t);
+          const v = (e.data && e.data.type === "VERSION") ? e.data.version : null;
+          resolve(v || null);
+        };
+
+        navigator.serviceWorker.controller.postMessage({ type: "GET_VERSION" }, [ch.port2]);
+      });
+    }
+
+    async function refreshStatus() {
+      setStatusText();
+      const v = await requestSwVersion();
+      if (v) swVersion = v;
+      setStatusText();
+    }
+
+    function showUpdateBanner(reg) {
+      bannerEl.style.display = "block";
+
+      btnEl.onclick = () => {
+        userRequestedUpdate = true;     // <-- only now do we allow reload
+        bannerEl.style.display = "none";
+
+        // Tell waiting SW to activate; SW must have SKIP_WAITING message handler
+        if (reg.waiting) reg.waiting.postMessage({ type: "SKIP_WAITING" });
+      };
+    }
+
+    async function initUpdateFlow() {
+      if (!("serviceWorker" in navigator)) return;
+
+      // Register SW (so we can reliably get the registration object)
+      const reg = await navigator.serviceWorker.register("/sir-model-pwa/shinylive-sw.js", {
+        scope: "/sir-model-pwa/"
+      });
+
+      // Ask browser to check for an update now (reduces “only after restart”)
+      try { await reg.update(); } catch (_) {}
+
+      // ONLY reload on controllerchange if user clicked Refresh
+      navigator.serviceWorker.addEventListener("controllerchange", () => {
+        if (userRequestedUpdate) {
+          window.location.reload();
         }
       });
-    });
-  }
 
-  // Keep badge stable and non-fickle
-  window.addEventListener("online", refreshStatus);
-  window.addEventListener("offline", setStatusText);
-
-  if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.addEventListener("message", (event) => {
-      if (event.data && event.data.type === "VERSION" && event.data.version) {
-        swVersion = event.data.version;
-        setStatusText();
+      // If an update is already waiting, show banner
+      if (reg.waiting && navigator.serviceWorker.controller) {
+        showUpdateBanner(reg);
       }
-    });
-  }
 
-  setStatusText();
-  refreshStatus();
-  initUpdateFlow();
-})();
-</script>
+      // If a new one is found later, show banner when it's installed (waiting)
+      reg.addEventListener("updatefound", () => {
+        const newWorker = reg.installing;
+        if (!newWorker) return;
 
+        newWorker.addEventListener("statechange", () => {
+          if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
+            showUpdateBanner(reg);
+          }
+        });
+      });
 
+      // Badge updates
+      window.addEventListener("online", refreshStatus);
+      window.addEventListener("offline", setStatusText);
 
+      navigator.serviceWorker.addEventListener("message", (event) => {
+        if (event.data && event.data.type === "VERSION" && event.data.version) {
+          swVersion = event.data.version;
+          setStatusText();
+        }
+      });
 
+      setStatusText();
+      refreshStatus();
+    }
+
+    // Start only after load to avoid interfering with Shinylive boot
+    window.addEventListener("load", initUpdateFlow);
+  })();
+  </script>
 </body>
 </html>
