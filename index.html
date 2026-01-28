@@ -59,30 +59,39 @@
   <div style="height: 100vh; width: 100vw" id="root"></div>
   <div id="pwa-status" aria-live="polite"></div>
 
+<div id="pwa-status" aria-live="polite"></div>
+
+<!-- Small update banner -->
+<div id="update-banner" style="
+  display:none; position:fixed; left:0; right:0; top:0; z-index:10000;
+  padding:10px 12px; background:rgba(0,0,0,0.85); color:#fff;
+  font:14px system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;">
+  A new version is available.
+  <button id="update-btn" style="
+    margin-left:10px; padding:6px 10px; border-radius:8px; border:0; cursor:pointer;">
+    Refresh
+  </button>
+</div>
+
 <script>
 (function () {
-  const el = document.getElementById("pwa-status");
-  const KEY = "sirModel_swVersion";
-  let currentVersion = localStorage.getItem(KEY) || ""; // show last known immediately
+  const statusEl = document.getElementById("pwa-status");
+  const bannerEl = document.getElementById("update-banner");
+  const btnEl = document.getElementById("update-btn");
 
-  function render(note) {
+  let swVersion = null;
+
+  function setStatusText() {
     const online = navigator.onLine ? "online" : "OFFLINE";
-    const controlled = (navigator.serviceWorker && navigator.serviceWorker.controller) ? "SW:yes" : "SW:no";
+    const cached = (navigator.serviceWorker && navigator.serviceWorker.controller) ? "cached" : "live";
 
-    // Never show "unknown". If we don't know yet, just omit the version briefly.
-    const vPart = currentVersion ? `v ${currentVersion} · ` : "";
-    const nPart = note ? ` · ${note}` : "";
-    el.textContent = `${vPart}${online} · ${controlled}${nPart}`;
+    // Professional behavior: do NOT show a fake/wrong/unknown version.
+    // If we don't know it yet, just omit it.
+    const vPart = swVersion ? `v ${swVersion} · ` : "";
+    statusEl.textContent = `${vPart}${online} · ${cached}`;
   }
 
-  function saveVersion(v) {
-    if (!v) return;
-    currentVersion = v;
-    localStorage.setItem(KEY, v);
-  }
-
-  // 1) Best: ask the SW (only works when controlled)
-  function requestFromController() {
+  function requestSwVersion() {
     return new Promise((resolve) => {
       if (!navigator.serviceWorker || !navigator.serviceWorker.controller) return resolve(null);
 
@@ -99,61 +108,73 @@
     });
   }
 
-  // 2) If not controlled yet (first visit), fetch SW JS and parse version = "v##"
-  async function fetchAndParseSwVersion() {
-    if (!navigator.onLine) return null;
-
-    // cache-bust so we read the deployed file, not a stale HTTP cache
-    const url = `/sir-model-pwa/shinylive-sw.js?cb=${Date.now()}`;
-    const txt = await fetch(url, { cache: "no-store" }).then(r => r.ok ? r.text() : "");
-    if (!txt) return null;
-
-    // Match: var version = "v13"; OR let/const version = 'v13';
-    const m = txt.match(/\bversion\s*=\s*['"]([^'"]+)['"]/);
-    return m ? m[1] : null;
+  async function refreshStatus() {
+    setStatusText();
+    const v = await requestSwVersion();
+    if (v) swVersion = v;
+    setStatusText();
   }
 
-  async function refreshVersion() {
-    render(); // immediate paint: no "unknown"
-
-    // Try controller first
-    let v = await requestFromController();
-    if (v) {
-      saveVersion(v);
-      render();
-      return;
-    }
-
-    // If not controlled, try parsing SW file (online)
-    v = await fetchAndParseSwVersion();
-    if (v) {
-      saveVersion(v);
-      render("ready after reopen"); // optional reassurance on first visit
-      return;
-    }
-
-    // If we still don't know, just keep the last known (or blank) — never "unknown"
-    render();
+  function showUpdateBanner(reg) {
+    bannerEl.style.display = "block";
+    btnEl.onclick = () => {
+      // Ask the waiting worker to activate now (requires SKIP_WAITING handler in SW)
+      if (reg.waiting) reg.waiting.postMessage({ type: "SKIP_WAITING" });
+    };
   }
 
-  // Update on events
-  window.addEventListener("online", refreshVersion);
-  window.addEventListener("offline", () => render());
+  async function initUpdateFlow() {
+    if (!("serviceWorker" in navigator)) return;
+
+    // Listen for the new worker taking control; one reload makes the new assets active.
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      // If an update is taking over, reload once to ensure all assets match.
+      // (This is exactly what “professional” PWAs do.)
+      window.location.reload();
+    });
+
+    // Wait until the SW registration is available.
+    const reg = await navigator.serviceWorker.getRegistration("/sir-model-pwa/");
+    if (!reg) return;
+
+    // If an update is already waiting, show banner.
+    if (reg.waiting && navigator.serviceWorker.controller) {
+      showUpdateBanner(reg);
+    }
+
+    // If a new one is found later, show banner when it's installed.
+    reg.addEventListener("updatefound", () => {
+      const newWorker = reg.installing;
+      if (!newWorker) return;
+
+      newWorker.addEventListener("statechange", () => {
+        // "installed" + controller exists => update is ready (waiting)
+        if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
+          showUpdateBanner(reg);
+        }
+      });
+    });
+  }
+
+  // Keep badge stable and non-fickle
+  window.addEventListener("online", refreshStatus);
+  window.addEventListener("offline", setStatusText);
 
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.addEventListener("controllerchange", refreshVersion);
     navigator.serviceWorker.addEventListener("message", (event) => {
       if (event.data && event.data.type === "VERSION" && event.data.version) {
-        saveVersion(event.data.version);
-        render();
+        swVersion = event.data.version;
+        setStatusText();
       }
     });
   }
 
-  render();
-  refreshVersion();
+  setStatusText();
+  refreshStatus();
+  initUpdateFlow();
 })();
 </script>
+
 
 
 
