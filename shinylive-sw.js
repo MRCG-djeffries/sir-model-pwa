@@ -2259,7 +2259,7 @@ self.addEventListener("install", (event) => {
       // CORE_WEBR
       `${base_path}/shinylive/webr/webr.mjs`,
       `${base_path}/shinylive/webr/R.bin.js`,
-      // `${base_path}/shinylive/webr/R.bin.wasm`, // only if it truly exists
+      `${base_path}/shinylive/webr/R.bin.wasm`, // only if it truly exists
     ];
 
     // ✅ Deduplicate once
